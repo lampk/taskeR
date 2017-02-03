@@ -34,9 +34,11 @@ extract_info <- function(object,
 }
 
 extract_task <- function(file, output = "tmp.todo"){
+  tmp <- readLines(file, warn = FALSE)
+
   knitr::purl(file, output = output,
               quiet = TRUE, documentation = 1)
-  tmp <- readLines(output, warn = FALSE)
+
   file.remove(output)
   tmp2 <- grepl(pattern = "## ----", x = tmp)
   tmp3 <- grepl(pattern = 'engine=\"todo\"', x = tmp)
