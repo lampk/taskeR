@@ -179,7 +179,7 @@ plot_task <- function(summary_info) {
     xrange <- range(c(plotdat$start, plotdat$end), na.rm = TRUE)
 
     ggplot(data = plotdat, aes(y = id, colour = priority)) +
-      xlim(c(xrange[1] - 10, xrange[2])) +
+      xlim(c(xrange[1] - 10, pmax(xrange[2], 1))) +
       ylim(c(0.5,(nrow(plotdat)))) +
       geom_vline(xintercept = 0, linetype = 2) +
       geom_segment(data = subset(plotdat, !is.na(start) & !is.na(end)), aes(x = start, xend = end, yend = id)) +
@@ -227,7 +227,7 @@ manage_task_addin <- function() {
 
       miniTabPanel("Chart", icon = icon("area-chart"),
                    miniContentPanel(
-                     plotOutput("plot", height = "100%")
+                     plotOutput("plot", width = "100%")
                    )
       )
     )
