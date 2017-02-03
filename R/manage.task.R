@@ -1,10 +1,13 @@
-extract_task <- function(file){
-  tmp <- readLines(file, warn = FALSE)
-  tmp2 <- grepl(pattern = "```\\{todo", x = tmp)
-  tmp3 <- c(1, grep(pattern = "```", x = tmp))
-  tmp4 <- ifelse(tmp2[tmp3], TRUE, FALSE)
-  tmp5 <- rep(tmp4, times = diff(c(tmp3, length(tmp) + 1)))
-  return(tmp[tmp5])
+read_plan <- function(file){
+  readLines(file, warn = FALSE)
+}
+
+extract_task <- function(object){
+  tmp <- grepl(pattern = "```\\{todo", x = object)
+  tmp2 <- c(1, grep(pattern = "```", x = object))
+  tmp3 <- ifelse(tmp[tmp2], TRUE, FALSE)
+  tmp4 <- rep(tmp3, times = diff(c(tmp2, length(object) + 1)))
+  return(object[tmp4])
 }
 
 split_task <- function(object) {
@@ -39,51 +42,71 @@ extract_info <- function(object,
 }
 
 get_task <- function(file) {
+  #browser()
+
+  ## read file(s)
+  all <- read_plan(file = file)
+
   ## extract information related to task
-  all_task <- extract_task(file = file)
+  all_task <- extract_task(object = all)
 
-  ## get all tasks
-  list_task <- split_task(all_task)
+  if (length(all_task) == 0) {
+    out <- data.frame(
+      task = character(),
+      info = character(),
+      tags = character(),
+      personnel = character(),
+      cost = character(),
+      deadline = character(),
+      priority = character(),
+      start = character(),
+      end = character()
+    )
+  } else {
+    ## get all tasks
+    list_task <- split_task(all_task)
 
-  ## extract todo
-  todo <- sapply(list_task, extract_info, info = "todo")
+    ## extract todo
+    todo <- sapply(list_task, extract_info, info = "todo")
 
-  ## extract task info
-  todo_info <- sapply(list_task, extract_info, info = "info")
+    ## extract task info
+    todo_info <- sapply(list_task, extract_info, info = "info")
 
-  ## extract tags
-  proj_tags <- extract_info(all_task, info = "proj_tags")
-  tmp <- paste(proj_tags, sapply(list_task, extract_info, info = "tags"), sep = "|")
-  todo_tags <- sapply(tmp, function(x) paste(unique(unlist(strsplit(tmp, split = "[|]"))), collapse = "|"))
+    ## extract tags
+    proj_tags <- extract_info(all_task, info = "proj_tags")
+    tmp <- paste(proj_tags, sapply(list_task, extract_info, info = "tags"), sep = "|")
+    todo_tags <- sapply(tmp, function(x) paste(unique(unlist(strsplit(tmp, split = "[|]"))), collapse = "|"))
 
-  ## extract personnel
-  todo_person <- sapply(list_task, extract_info, info = "personnel")
+    ## extract personnel
+    todo_person <- sapply(list_task, extract_info, info = "personnel")
 
-  ## extract cost
-  todo_cost <- sapply(list_task, extract_info, info = "cost")
+    ## extract cost
+    todo_cost <- sapply(list_task, extract_info, info = "cost")
 
-  ## extract deadline
-  todo_deadline <- sapply(list_task, extract_info, info = "deadline")
+    ## extract deadline
+    todo_deadline <- sapply(list_task, extract_info, info = "deadline")
 
-  ## extract priority
-  todo_priority <- sapply(list_task, extract_info, info = "priority")
+    ## extract priority
+    todo_priority <- sapply(list_task, extract_info, info = "priority")
 
-  ## extract task start
-  todo_start <- sapply(list_task, extract_info, info = "start")
+    ## extract task start
+    todo_start <- sapply(list_task, extract_info, info = "start")
 
-  ## extract task end
-  todo_end <- sapply(list_task, extract_info, info = "end")
+    ## extract task end
+    todo_end <- sapply(list_task, extract_info, info = "end")
 
-  ## output
-  return(data.frame(task = todo,
-                    info = todo_info,
-                    tags = todo_tags,
-                    personnel = todo_person,
-                    cost = todo_cost,
-                    deadline = todo_deadline,
-                    priority = todo_priority,
-                    start = todo_start,
-                    end = todo_end))
+    ## output
+    out <- data.frame(task = todo,
+                      info = todo_info,
+                      tags = todo_tags,
+                      personnel = todo_person,
+                      cost = todo_cost,
+                      deadline = todo_deadline,
+                      priority = todo_priority,
+                      start = todo_start,
+                      end = todo_end)
+  }
+  return(out)
 }
 
 summarize_task <- function(task_info){
@@ -107,39 +130,6 @@ summarize_task <- function(task_info){
 
   ## output
   return(out)
-}
-
-#' Function to display summary of tasks
-#' @export
-manage_task_addin <- function() {
-  require(shiny)
-  require(miniUI)
-  require(data.table)
-
-  ## ui
-  ui <- miniPage(
-    gadgetTitleBar("Table Task View",
-                   right = miniTitleBarButton("done", "Done", primary = TRUE)),
-    miniContentPanel(
-      dataTableOutput("table")
-    )
-  )
-
-  ## server
-  server <- function(input, output, session){
-    context <- rstudioapi::getActiveDocumentContext()
-    path <- context$path
-    task <- get_task(path)
-    output$table <- renderDataTable(summarize_task(task)[, c("task", "tags", "priority", "deadline",
-                                             "status", "time_left")])
-    ## stop app when click "Done"
-    observeEvent(input$done, {
-      stopApp()
-    })
-  }
-
-  ## run
-  runGadget(ui, server)
 }
 
 #' Addin to insert date
@@ -173,62 +163,122 @@ insert_date_addin <- function() {
 ggplot_color <- function(n){
   ## thanks to John Colby (http://stackoverflow.com/questions/8197559/emulate-ggplot2-default-color-palette)
   hcl(h = seq(15, 375, length = n + 1), l = 65, c = 100)[1:n]
-  }
+}
 
 plot_task <- function(summary_info) {
-  require(dplyr)
-  require(ggplot2)
-  plotdat <- summary_info %>%
-    filter(!is.na(deadline)) %>%
-    mutate(id = n():1,
-           start = (start - deadline)/ddays(1),
-           end = ifelse(completed == "Yes", (end - deadline)/ddays(1),
-                        (cutoff - deadline)/ddays(1)),
-           current = (cutoff - deadline)/ddays(1))
-  xrange <- range(c(plotdat$start, plotdat$end), na.rm = TRUE)
+  if (is.null(summary_info)) {return("No task available")} else {
+    require(dplyr)
+    require(ggplot2)
+    plotdat <- summary_info %>%
+      filter(!is.na(deadline)) %>%
+      mutate(id = n():1,
+             start = (start - deadline)/ddays(1),
+             end = ifelse(completed == "Yes", (end - deadline)/ddays(1),
+                          (cutoff - deadline)/ddays(1)),
+             current = (cutoff - deadline)/ddays(1))
+    xrange <- range(c(plotdat$start, plotdat$end), na.rm = TRUE)
 
-  ggplot(data = plotdat, aes(y = id, colour = priority)) +
-    xlim(c(xrange[1] - 10, xrange[2])) +
-    ylim(c(0.5,(nrow(plotdat)))) +
-    geom_vline(xintercept = 0, linetype = 2) +
-    geom_segment(data = subset(plotdat, !is.na(start) & !is.na(end)), aes(x = start, xend = end, yend = id)) +
-    geom_point(data = subset(plotdat, status %in% c("Not scheduled yet", "Not started yet", "Ongoing")), aes(x = current), shape = 17) +
-    geom_point(data = subset(plotdat, !is.na(start)), aes(x = start), shape = 4) +
-    geom_point(data = subset(plotdat, status == "Completed"), aes(x = end), shape = 16) +
-    geom_text(aes(label = task, x = xrange[1] - 10), colour = "black") +
-    xlab("Days from deadline") + ylab("") +
-    scale_color_manual(breaks = c("high", "low", "medium", ""),
-                       values = c(ggplot_color(3), "black")) +
-    theme(axis.line.y = element_blank(),
-          axis.line.x = element_line(),
-          axis.ticks.y = element_blank(),
-          axis.text.y = element_blank(),
-          panel.background = element_blank(),
-          panel.grid.minor.y = element_line(colour = "grey"),
-          legend.position = "none")
+    ggplot(data = plotdat, aes(y = id, colour = priority)) +
+      xlim(c(xrange[1] - 10, xrange[2])) +
+      ylim(c(0.5,(nrow(plotdat)))) +
+      geom_vline(xintercept = 0, linetype = 2) +
+      geom_segment(data = subset(plotdat, !is.na(start) & !is.na(end)), aes(x = start, xend = end, yend = id)) +
+      geom_point(data = subset(plotdat, status %in% c("Not scheduled yet", "Not started yet", "Ongoing")), aes(x = current), shape = 17) +
+      geom_point(data = subset(plotdat, !is.na(start)), aes(x = start), shape = 4) +
+      geom_point(data = subset(plotdat, status == "Completed"), aes(x = end), shape = 16) +
+      geom_text(aes(label = task, x = xrange[1] - 10), colour = "black") +
+      xlab("Days from deadline") + ylab("") +
+      scale_color_manual(breaks = c("high", "low", "medium", ""),
+                         values = c(ggplot_color(3), "black")) +
+      theme(axis.line.y = element_blank(),
+            axis.line.x = element_line(),
+            axis.ticks.y = element_blank(),
+            axis.text.y = element_blank(),
+            panel.background = element_blank(),
+            panel.grid.minor.y = element_line(colour = "grey"),
+            legend.position = "none")
+  }
 }
 
 #' @export
-plot_task_addin <- function() {
+manage_task_addin <- function() {
   require(shiny)
   require(miniUI)
 
   ## ui
   ui <- miniPage(
-    gadgetTitleBar("Plot Task View",
+    gadgetTitleBar("Task Summary",
                    right = miniTitleBarButton("done", "Done", primary = TRUE)),
-    miniContentPanel(
-      plotOutput("plot")
+
+    miniTabstripPanel(
+      miniTabPanel("Input", icon = icon("folder-open-o"),
+                   miniContentPanel(
+                     checkboxInput('file', 'File', TRUE),
+                     textInput("path", "Path:"),
+                     actionButton("data_browse", "Data browse")
+                   )
+      ),
+
+      miniTabPanel("Table", icon = icon("table"),
+                   miniContentPanel(
+                     dataTableOutput("table")
+                   )
+      ),
+
+      miniTabPanel("Chart", icon = icon("area-chart"),
+                   miniContentPanel(
+                     plotOutput("plot", height = "100%")
+                   )
+      )
     )
   )
 
   ## server
   server <- function(input, output, session){
-    context <- rstudioapi::getActiveDocumentContext()
-    path <- context$path
-    task <- get_task(path)
+    path <- rstudioapi::getActiveDocumentContext()$path
+    observe({
+      updateTextInput(session, "path",  value = path)
+
+      if (input$file == TRUE) {
+        if (input$data_browse == 0) return()
+        updateTextInput(session, "path",  value = file.choose2())
+      } else {
+        if (input$data_browse == 0) return()
+        updateTextInput(session, "path",  value = tcltk::tk_choose.dir())
+      }
+    })
+
+    output$table <- renderDataTable(
+      {
+        if (input$file) {
+          task <- get_task(file = input$path)
+        } else {
+          tmp <- list.files(path = input$path, pattern = ".Rmd", recursive = TRUE)
+          task <- do.call("rbind",
+                          lapply(tmp, function(x) get_task(file.path(input$path, x))))
+        }
+
+        summarize_task(task)[, c("task", "tags", "priority", "deadline",
+                                 "status", "time_left")]
+      }
+    )
     output$plot <- renderPlot(
-      plot_task(summarize_task(task))
+      {
+        if (input$file) {
+          task <- get_task(file = input$path)
+        } else {
+          tmp <- list.files(path = input$path, pattern = ".Rmd", recursive = TRUE)
+          task <- do.call("rbind",
+                          lapply(tmp, function(x) get_task(file.path(input$path, x))))
+        }
+
+        out <- summarize_task(task)
+        if (nrow(out) == 0) {
+          errorMessage("data", "No task available")
+        } else {
+          plot_task(out)
+        }
+      }
     )
     ## stop app when click "Done"
     observeEvent(input$done, {
@@ -240,5 +290,18 @@ plot_task_addin <- function() {
   runGadget(ui, server)
 }
 
+errorMessage <- function(type, message) {
+  structure(
+    list(type = type, message = message),
+    class = "error_message"
+  )
+}
 
-
+file.choose2 <- function(...) {
+  pathname <- NULL;
+  tryCatch({
+    pathname <- file.choose();
+  }, error = function(ex) {
+  })
+  pathname;
+}

@@ -1,11 +1,6 @@
-Name: Tasks Table View
-Description: Display tasks in Table View
+Name: Tasks Summary
+Description: Summary tasks
 Binding: manage_task_addin
-Interactive: true
-
-Name: Tasks Plot View
-Description: Display tasks in Plot View
-Binding: plot_task_addin
 Interactive: true
 
 Name: Insert Date

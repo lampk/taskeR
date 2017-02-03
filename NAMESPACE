@@ -2,4 +2,3 @@
 
 export(insert_date_addin)
 export(manage_task_addin)
-export(plot_task_addin)
