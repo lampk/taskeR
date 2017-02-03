@@ -8,5 +8,4 @@ devtools::document()
 ## git set up
 # git remote add origin https://github.com/lampk/taskeR.git
 # git config remote.origin.url git@github.com:lampk/taskeR.git
-# git pull origin master
-# git push origin master
+# git push -u origin master

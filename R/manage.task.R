@@ -1,29 +1,34 @@
-# extract_task <- function(file){
-#   tmp <- readLines(file, warn = FALSE)
-#   return(tmp[grepl(pattern = "[:][[:alnum:]_]", x = tmp)])
-# }
-#
-# split_task <- function(object) {
-#   tmp <- grep(pattern = ":TODO:", x = object)
-#   tmp2 <- rep(1:length(tmp), times = diff(c(tmp, length(object) + 1)))
-#   if (tmp[1] > 1){object <- object[-c(1:(tmp[1] - 1))]}
-#   return(split(x = object, f = tmp2))
-# }
+extract_task <- function(file){
+  tmp <- readLines(file, warn = FALSE)
+  tmp2 <- grepl(pattern = "```\\{todo", x = tmp)
+  tmp3 <- c(1, grep(pattern = "```", x = tmp))
+  tmp4 <- ifelse(tmp2[tmp3], TRUE, FALSE)
+  tmp5 <- rep(tmp4, times = diff(c(tmp3, length(tmp) + 1)))
+  return(tmp[tmp5])
+}
+
+split_task <- function(object) {
+  tmp <- grep(pattern = '```\\{todo', x = object)
+  tmp2 <- rep(1:length(tmp), times = diff(c(tmp, length(object) + 1)))
+  if (tmp[1] > 1){object <- object[-c(1:(tmp[1] - 1))]}
+  return(split(x = object, f = tmp2))
+}
 
 extract_info <- function(object,
-                         info = c("proj_tags", "proj_close", "todo", "info", "tags",
+                         info = c("proj_tags", "proj_start", "proj_end", "todo", "info", "tags",
                                   "personnel", "cost", "deadline", "priority", "start", "end")) {
   if (info == "todo") {
-    pattern <- "## ----"
+    #browser()
+    pattern <- "```\\{todo|\\}"
     tmp <- grepl(pattern = pattern, x = object)
     if (any(tmp)) {
       out <- gsub("^\\s+|\\s+$", "",
                   gsub(pattern = pattern,
                        replacement = "",
-                       x = sapply(object[tmp], function(y) strsplit(y, split = ",")[[1]][1], USE.NAMES = FALSE)))
+                       x = object[tmp]))
     } else {out <- ""}
   } else {
-    pattern <- paste(info, "=")
+    pattern <- paste("^", info, " =", sep = "")
     tmp <- grepl(pattern = pattern, x = object)
     if (any(tmp)) {
       out <- gsub("^\\s+|\\s+$", "", gsub(pattern = pattern, replacement = "", x = object[tmp]))
@@ -31,26 +36,6 @@ extract_info <- function(object,
   }
 
   return(out)
-}
-
-extract_task <- function(file, output = "tmp.todo"){
-  tmp <- readLines(file, warn = FALSE)
-
-  knitr::purl(file, output = output,
-              quiet = TRUE, documentation = 1)
-
-  file.remove(output)
-  tmp2 <- grepl(pattern = "## ----", x = tmp)
-  tmp3 <- grepl(pattern = 'engine=\"todo\"', x = tmp)
-  tmp4 <- rep(tmp3[tmp2], times = diff(c(which(tmp2), length(tmp) + 1)))
-  return(tmp[tmp4])
-}
-
-split_task <- function(object) {
-  tmp <- grep(pattern = 'engine=\"todo\"', x = object)
-  tmp2 <- rep(1:length(tmp), times = diff(c(tmp, length(object) + 1)))
-  if (tmp[1] > 1){object <- object[-c(1:(tmp[1] - 1))]}
-  return(split(x = object, f = tmp2))
 }
 
 get_task <- function(file) {
@@ -107,6 +92,7 @@ summarize_task <- function(task_info){
   require(dplyr)
   cutoff <- ymd_hms(Sys.time())
   out <- task_info %>%
+    filter(info != "" | personnel != "" | cost != "" | deadline != "" | priority != "" | start != "" | end != "") %>%
     mutate(start = ymd_hm(start),
            end   = ymd_hm(end),
            deadline = ymd_hm(deadline),
@@ -128,13 +114,14 @@ summarize_task <- function(task_info){
 manage_task_addin <- function() {
   require(shiny)
   require(miniUI)
+  require(data.table)
 
   ## ui
   ui <- miniPage(
-    gadgetTitleBar("Task View",
+    gadgetTitleBar("Table Task View",
                    right = miniTitleBarButton("done", "Done", primary = TRUE)),
     miniContentPanel(
-      tableOutput("table")
+      dataTableOutput("table")
     )
   )
 
@@ -143,7 +130,7 @@ manage_task_addin <- function() {
     context <- rstudioapi::getActiveDocumentContext()
     path <- context$path
     task <- get_task(path)
-    output$table <- renderTable(summarize_task(task)[, c("task", "tags", "priority", "deadline",
+    output$table <- renderDataTable(summarize_task(task)[, c("task", "tags", "priority", "deadline",
                                              "status", "time_left")])
     ## stop app when click "Done"
     observeEvent(input$done, {
@@ -183,9 +170,75 @@ insert_date_addin <- function() {
   runGadget(ui, server)
 }
 
-# a <- summarize_task(Lmisc:::get_task(file.path("~", "Documents", "test.Rmd"))) %>%
-#   mutate(id = 1:n())
-# library(ggplot2)
-# library(tidyr)
-# ggplot(data = a, aes(y = id)) +
+ggplot_color <- function(n){
+  ## thanks to John Colby (http://stackoverflow.com/questions/8197559/emulate-ggplot2-default-color-palette)
+  hcl(h = seq(15, 375, length = n + 1), l = 65, c = 100)[1:n]
+  }
+
+plot_task <- function(summary_info) {
+  require(dplyr)
+  require(ggplot2)
+  plotdat <- summary_info %>%
+    filter(!is.na(deadline)) %>%
+    mutate(id = n():1,
+           start = (start - deadline)/ddays(1),
+           end = ifelse(completed == "Yes", (end - deadline)/ddays(1),
+                        (cutoff - deadline)/ddays(1)),
+           current = (cutoff - deadline)/ddays(1))
+  xrange <- range(c(plotdat$start, plotdat$end), na.rm = TRUE)
+
+  ggplot(data = plotdat, aes(y = id, colour = priority)) +
+    xlim(c(xrange[1] - 10, xrange[2])) +
+    ylim(c(0.5,(nrow(plotdat)))) +
+    geom_vline(xintercept = 0, linetype = 2) +
+    geom_segment(data = subset(plotdat, !is.na(start) & !is.na(end)), aes(x = start, xend = end, yend = id)) +
+    geom_point(data = subset(plotdat, status %in% c("Not scheduled yet", "Not started yet", "Ongoing")), aes(x = current), shape = 17) +
+    geom_point(data = subset(plotdat, !is.na(start)), aes(x = start), shape = 4) +
+    geom_point(data = subset(plotdat, status == "Completed"), aes(x = end), shape = 16) +
+    geom_text(aes(label = task, x = xrange[1] - 10), colour = "black") +
+    xlab("Days from deadline") + ylab("") +
+    scale_color_manual(breaks = c("high", "low", "medium", ""),
+                       values = c(ggplot_color(3), "black")) +
+    theme(axis.line.y = element_blank(),
+          axis.line.x = element_line(),
+          axis.ticks.y = element_blank(),
+          axis.text.y = element_blank(),
+          panel.background = element_blank(),
+          panel.grid.minor.y = element_line(colour = "grey"),
+          legend.position = "none")
+}
+
+#' @export
+plot_task_addin <- function() {
+  require(shiny)
+  require(miniUI)
+
+  ## ui
+  ui <- miniPage(
+    gadgetTitleBar("Plot Task View",
+                   right = miniTitleBarButton("done", "Done", primary = TRUE)),
+    miniContentPanel(
+      plotOutput("plot")
+    )
+  )
+
+  ## server
+  server <- function(input, output, session){
+    context <- rstudioapi::getActiveDocumentContext()
+    path <- context$path
+    task <- get_task(path)
+    output$plot <- renderPlot(
+      plot_task(summarize_task(task))
+    )
+    ## stop app when click "Done"
+    observeEvent(input$done, {
+      stopApp()
+    })
+  }
+
+  ## run
+  runGadget(ui, server)
+}
+
+
 
