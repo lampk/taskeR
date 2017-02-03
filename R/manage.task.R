@@ -311,6 +311,7 @@ copy_snippets <- function() {
   tmp <- list.files(path_from)
   for (i in (1:length(tmp))) {
     file.copy(from = file.path(path_from, tmp[i]),
-              to = file.path(Sys.getenv("HOME"), ".R", "snippets"))
+              to = file.path(Sys.getenv("HOME"), ".R", "snippets"),
+              overwrite = TRUE)
   }
 }
