@@ -1,0 +1,9 @@
+Name: Tasks
+Description: Manage project's task
+Binding: manage_task_addin
+Interactive: true
+
+Name: Insert Date
+Description: Insert Date into current location
+Binding: insert_date_addin
+Interactive: true

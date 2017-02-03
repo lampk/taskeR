@@ -1,0 +1,16 @@
+Package: taskeR
+Type: Package
+Title: Managing Tasks with RStudio
+Version: 0.1.0
+Author: Phung Khanh Lam
+Maintainer: Phung Khanh Lam <phungkhanhlam@gmail.com>
+Description: Collections of functions and addins to manage tasks with RStudio
+    Use four spaces when indenting paragraphs within the Description.
+License: GPL-2
+Encoding: UTF-8
+LazyData: true
+Imports: lubridate,
+    shiny,
+    miniUI,
+    rstudioapi
+RoxygenNote: 6.0.0
