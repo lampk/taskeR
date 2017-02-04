@@ -1,5 +1,5 @@
-Name: Tasks Summary
-Description: Summary tasks
+Name: Tasks View
+Description: View all tasks
 Binding: manage_task_addin
 Interactive: true
 

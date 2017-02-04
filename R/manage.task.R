@@ -1,25 +1,53 @@
-read_plan <- function(file){
-  readLines(file, warn = FALSE)
-}
 
-extract_task <- function(object){
+#' To extract all task from an .Rmd file
+#'
+#' @param file Path to an .Rmd file
+#' @return A 'task' object which is a character vector contains all task information extracted from the .Rmd file
+#' @example
+#' extract_task(file = file.path(system.file(package = "taskeR"), "test", "test.Rmd"))
+#' @export
+extract_task <- function(file){
+  object <- readLines(file, warn = FALSE)
   tmp <- grepl(pattern = "```\\{todo", x = object)
   tmp2 <- c(1, grep(pattern = "```", x = object))
   tmp3 <- ifelse(tmp[tmp2], TRUE, FALSE)
   tmp4 <- rep(tmp3, times = diff(c(tmp2, length(object) + 1)))
-  return(object[tmp4])
+  out <- object[tmp4]
+  class(out) <- c("character", "task")
+  return(out)
 }
 
+#' To split task vector into a list of tasks
+#'
+#' @param object A 'task' object which is a character vector contains all task information extracted from the .Rmd file
+#' @return A list of all tasks and their properties
+#' @example
+#' tmp <- extract_task(file = file.path(system.file(package = "taskeR"), "test", "test.Rmd"))
+#' split_task(tmp)
+#' @export
 split_task <- function(object) {
   tmp <- grep(pattern = '```\\{todo', x = object)
   tmp2 <- rep(1:length(tmp), times = diff(c(tmp, length(object) + 1)))
   if (tmp[1] > 1){object <- object[-c(1:(tmp[1] - 1))]}
-  return(split(x = object, f = tmp2))
+  tmp3 <- split(x = object, f = tmp2)
+  out <- lapply(tmp3, function(x) {class(x) <- c("character", "task"); x})
+  class(out) <- c("list", "task.list")
+  return(out)
 }
 
+#' To extract a specific property of a task
+#'
+#' @param object A task object
+#' @param info One of pre-defined property of task to extract
+#' @return A character vector contains task's property to extract
+#' @example
+#' tmp <- extract_task(file = file.path(system.file(package = "taskeR"), "test", "test.Rmd"))
+#' extract_info(object = tmp, info = "todo")
+#' @export
 extract_info <- function(object,
                          info = c("proj_tags", "proj_start", "proj_end", "todo", "info", "tags",
                                   "personnel", "cost", "deadline", "priority", "start", "end")) {
+  if (length(info) > 1) info <- "todo"
   if (info == "todo") {
     #browser()
     pattern <- "```\\{todo|\\}"
@@ -41,14 +69,17 @@ extract_info <- function(object,
   return(out)
 }
 
+#' To get all properties of all task from an .Rmd file and export into a data frame
+#'
+#' @param file Path to an .Rmd file
+#' @return A data frame contains all properties of all task from the file
+#' @example
+#' get_task(file = file.path(system.file(package = "taskeR"), "test", "test.Rmd"))
+#' @export
 get_task <- function(file) {
-  #browser()
-
-  ## read file(s)
-  all <- read_plan(file = file)
 
   ## extract information related to task
-  all_task <- extract_task(object = all)
+  all_task <- extract_task(file = file)
 
   if (length(all_task) == 0) {
     out <- data.frame(
@@ -106,11 +137,19 @@ get_task <- function(file) {
                       start = todo_start,
                       end = todo_end)
   }
+  class(out) <- c("data.frame", "task.frame")
   return(out)
 }
 
+#' To summarize tasks from a data frame of all tasks
+#'
+#' @param task_info A task.frame object
+#' @return A data frame contains all property and additional summaries of all tasks
+#' @example
+#' tmp <- get_task(file = file.path(system.file(package = "taskeR"), "test", "test.Rmd"))
+#' summarize_task(tmp)
+#' @export
 summarize_task <- function(task_info){
-  #browser()
   require(lubridate)
   require(dplyr)
   cutoff <- ymd_hms(Sys.time())
@@ -129,42 +168,19 @@ summarize_task <- function(task_info){
                                   ifelse(completed == "Yes", "Completed", "Ongoing"))))
 
   ## output
+  class(out) <- c("data.frame", "task.summary")
   return(out)
 }
 
-#' Addin to insert date
+#' To plot a task.summary object
+#'
+#' @param summary_info A task.summary object
+#' @return A plot created by ggplot
+#' @example
+#' tmp <- get_task(file = file.path(system.file(package = "taskeR"), "test", "test.Rmd"))
+#' tmp2 <- summarize_task(tmp)
+#' plot_task(tmp2)
 #' @export
-insert_date_addin <- function() {
-  require(shiny)
-  require(miniUI)
-
-  ## ui
-  ui <- miniPage(
-    gadgetTitleBar("Insert Date",
-                   right = miniTitleBarButton("done", "Done", primary = TRUE)),
-    miniContentPanel(
-      dateInput("date", "Date:", value = Sys.Date())
-    )
-  )
-
-  ## server
-  server <- function(input, output, session){
-    ## stop app when click "Done"
-    observeEvent(input$done, {
-      rstudioapi::insertText(paste(as.character(input$date), "00:00"))
-      stopApp()
-    })
-  }
-
-  ## run
-  runGadget(ui, server)
-}
-
-ggplot_color <- function(n){
-  ## thanks to John Colby (http://stackoverflow.com/questions/8197559/emulate-ggplot2-default-color-palette)
-  hcl(h = seq(15, 375, length = n + 1), l = 65, c = 100)[1:n]
-}
-
 plot_task <- function(summary_info) {
   if (is.null(summary_info)) {return("No task available")} else {
     require(dplyr)
@@ -180,13 +196,14 @@ plot_task <- function(summary_info) {
 
     ggplot(data = plotdat, aes(y = id, colour = priority)) +
       xlim(c(xrange[1] - 10, pmax(xrange[2], 1))) +
-      ylim(c(0.5,(nrow(plotdat)))) +
+      ylim(c(0.5,(nrow(plotdat) + 0.5))) +
       geom_vline(xintercept = 0, linetype = 2) +
       geom_segment(data = subset(plotdat, !is.na(start) & !is.na(end)), aes(x = start, xend = end, yend = id)) +
       geom_point(data = subset(plotdat, status %in% c("Not scheduled yet", "Not started yet", "Ongoing")), aes(x = current), shape = 17) +
       geom_point(data = subset(plotdat, !is.na(start)), aes(x = start), shape = 4) +
       geom_point(data = subset(plotdat, status == "Completed"), aes(x = end), shape = 16) +
       geom_text(aes(label = task, x = xrange[1] - 10), colour = "black") +
+      geom_hline(yintercept = c(1:(nrow(plotdat) + 1)) - 0.5, colour = "grey") +
       xlab("Days from deadline") + ylab("") +
       scale_color_manual(breaks = c("high", "low", "medium", ""),
                          values = c(ggplot_color(3), "black")) +
@@ -195,27 +212,55 @@ plot_task <- function(summary_info) {
             axis.ticks.y = element_blank(),
             axis.text.y = element_blank(),
             panel.background = element_blank(),
-            panel.grid.minor.y = element_line(colour = "grey"),
             legend.position = "none")
   }
 }
 
+#' To summarize a task.summary object
+#' @export
+report_task <- function(summary_info){
+  require(lubridate)
+
+  n_total <- nrow(summary_info)
+  n_unscheduled <- sum(summary_info$status == "Not scheduled yet")
+  n_unstarted <- sum(summary_info$status == "Not started yet")
+  n_uncompleted <- sum(summary_info$status == "Ongoing")
+  n_overdue <- sum(summary_info$time_left < 0)
+
+  ## find number of task due soon (by 17:00 Friday this week)
+  ### the current date
+  current <- ymd_hms(Sys.time())
+  ### find the Friday this week
+  friday <- ymd_hm(paste(ymd(ceiling_date(current, unit = "week") - ddays(2)), "17:00"))
+  n_duesoon <- with(summary_info, sum(deadline <= friday & completed == "No"))
+
+  out <- data.frame(Item = c("Total task", "Unscheduled task",
+                             "Unstarted task", "Ongoing task", "Overdue task",
+                             "Due-soon task"),
+                    n = c(n_total, n_unscheduled, n_unstarted, n_uncompleted, n_overdue, n_duesoon))
+  out$p <- paste(round(100 * out$n/c(rep(n_total, 4), n_total - (n_unscheduled + n_unstarted), n_uncompleted)), "%")
+  return(out)
+}
+
+#' Addin to manage all tasks
 #' @export
 manage_task_addin <- function() {
   require(shiny)
   require(miniUI)
+  require(rstudioapi)
+  path <- rstudioapi::getActiveDocumentContext()$path
 
   ## ui
   ui <- miniPage(
-    gadgetTitleBar("Task Summary",
+    gadgetTitleBar("Task View",
                    right = miniTitleBarButton("done", "Done", primary = TRUE)),
 
     miniTabstripPanel(
       miniTabPanel("Input", icon = icon("folder-open-o"),
                    miniContentPanel(
                      checkboxInput('file', 'File', TRUE),
-                     textInput("path", "Path:"),
-                     actionButton("data_browse", "Data browse")
+                     textInput("path", "Path:", path),
+                     actionButton("file_browse", "File browse")
                    )
       ),
 
@@ -229,21 +274,27 @@ manage_task_addin <- function() {
                    miniContentPanel(
                      plotOutput("plot", width = "100%")
                    )
+      ),
+
+      miniTabPanel("Summary", icon = icon("sticky-note-o"),
+                   miniContentPanel(
+                     tableOutput("summary")
+                   )
       )
     )
   )
 
   ## server
   server <- function(input, output, session){
-    path <- rstudioapi::getActiveDocumentContext()$path
+    #path <- rstudioapi::getActiveDocumentContext()$path
     observe({
-      updateTextInput(session, "path",  value = path)
+      #updateTextInput(session, "path",  value = path)
 
       if (input$file == TRUE) {
-        if (input$data_browse == 0) return()
+        if (input$file_browse == 0) return()
         updateTextInput(session, "path",  value = file.choose2())
       } else {
-        if (input$data_browse == 0) return()
+        if (input$file_browse == 0) return()
         updateTextInput(session, "path",  value = tcltk::tk_choose.dir())
       }
     })
@@ -274,10 +325,25 @@ manage_task_addin <- function() {
 
         out <- summarize_task(task)
         if (nrow(out) == 0) {
-          errorMessage("data", "No task available")
+          "No task available"
         } else {
           plot_task(out)
         }
+      }
+    )
+
+    output$summary <- renderTable(
+      {
+        if (input$file) {
+          task <- get_task(file = input$path)
+        } else {
+          tmp <- list.files(path = input$path, pattern = ".Rmd", recursive = TRUE)
+          task <- do.call("rbind",
+                          lapply(tmp, function(x) get_task(file.path(input$path, x))))
+        }
+
+        tmp <- summarize_task(task)
+        report_task(tmp)
       }
     )
     ## stop app when click "Done"
@@ -288,30 +354,4 @@ manage_task_addin <- function() {
 
   ## run
   runGadget(ui, server)
-}
-
-errorMessage <- function(type, message) {
-  structure(
-    list(type = type, message = message),
-    class = "error_message"
-  )
-}
-
-file.choose2 <- function(...) {
-  pathname <- NULL;
-  tryCatch({
-    pathname <- file.choose();
-  }, error = function(ex) {
-  })
-  pathname;
-}
-
-copy_snippets <- function() {
-  path_from <- file.path(system.file(package = "taskeR"), "snippets")
-  tmp <- list.files(path_from)
-  for (i in (1:length(tmp))) {
-    file.copy(from = file.path(path_from, tmp[i]),
-              to = file.path(Sys.getenv("HOME"), ".R", "snippets"),
-              overwrite = TRUE)
-  }
 }
