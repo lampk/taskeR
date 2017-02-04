@@ -18,7 +18,7 @@ copy_snippets <- function(from = file.path(system.file(package = "taskeR"), "sni
                           to = file.path(Sys.getenv("HOME"), ".R", "snippets")) {
   tmp <- list.files(from)
   for (i in (1:length(tmp))) {
-    file.copy(from = file.path(path_from, tmp[i]),
+    file.copy(from = file.path(from, tmp[i]),
               to = to,
               overwrite = TRUE)
   }
